@@ -1,0 +1,52 @@
+name: WireGuard deployment checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install --yes shellcheck
+      - name: Check shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' script; do
+            bash -n "$script"
+          done < <(find . -type f -name '*.sh' -not -path './.git/*' -print0)
+      - name: Lint shell scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' scripts < <(find . -type f -name '*.sh' -not -path './.git/*' -print0)
+          shellcheck --external-sources "${scripts[@]}"
+      - name: Run offline server tests
+        run: bash tests/test_server.sh
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run offline Windows tests
+        shell: pwsh
+        run: ./tests/test_windows.ps1
+      - name: Run offline Windows PowerShell 5.1 tests
+        shell: powershell
+        run: ./tests/test_windows.ps1
+
+  integration:
+    needs: linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy and test on the disposable GitHub runner
+        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT bash tests/test_integration.sh

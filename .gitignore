@@ -1,0 +1,21 @@
+# Real server data, exports, keys, logs, and downloaded build tools stay local.
+servers/
+output/
+**/output/
+*.conf
+*.key
+*.pub
+*.pem
+*.ppk
+*.log
+*.tmp
+*.zip
+*.tar.gz
+*.tar.xz
+*.exe
+**/server.env
+!/server.env
+!/新服务器模板/server.env
+__pycache__/
+runtime/
+build/
