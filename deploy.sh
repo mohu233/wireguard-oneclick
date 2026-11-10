@@ -396,7 +396,11 @@ if ss -H -lun | awk -v p=":$WG_PORT" '$5 ~ (p"$") || $4 ~ (p"$") {found=1} END{e
     die "UDP $WG_PORT became occupied during setup."
 fi
 
+umask 077
 for role in server router test; do
+    # Explicit modes also protect against permissive inherited default ACLs.
+    install -m 0600 /dev/null "$BASE/server/$role.key"
+    install -m 0600 /dev/null "$BASE/server/$role.pub"
     "$WG_BIN" genkey > "$BASE/server/$role.key"
     "$WG_BIN" pubkey < "$BASE/server/$role.key" > "$BASE/server/$role.pub"
     chmod 0600 "$BASE/server/$role.key" "$BASE/server/$role.pub"
@@ -490,8 +494,10 @@ chmod 0700 "$BASE/firewall.sh"
     printf 'BASE=%q\nWG=%q\nRUNTIME=%q\nADDRESS=%q\nMTU=%q\n' "$BASE" "$WG_BIN" "$RUNTIME" "$VPN_PREFIX.1/24" "$MTU"
     cat <<'SERVICE_SCRIPT'
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+trap 'printf "[office-wg-service] A service operation failed at line %s.\n" "$LINENO" >&2' ERR
 case ${1:-} in
     start)
+        printf '[office-wg-service] Creating kernel interface.\n' >&2
         ip link add dev wg-office type wireguard
         "$0" configure
         ;;
@@ -503,11 +509,15 @@ case ${1:-} in
             done
             [[ -S /var/run/wireguard/wg-office.sock ]]
         fi
+        printf '[office-wg-service] Loading saved WireGuard configuration.\n' >&2
         "$WG" setconf wg-office "$BASE/server/server.conf"
+        printf '[office-wg-service] Configuring tunnel address and forwarding.\n' >&2
         ip -4 address replace "$ADDRESS" dev wg-office
         ip link set dev wg-office mtu "$MTU" up
         sysctl -w net.ipv4.ip_forward=1 >/dev/null
+        printf '[office-wg-service] Applying scoped firewall rules.\n' >&2
         "$BASE/firewall.sh" up
+        printf '[office-wg-service] Tunnel service configured.\n' >&2
         ;;
     cleanup)
         "$BASE/firewall.sh" down || true
@@ -548,7 +558,16 @@ chmod 0644 "$SYSCTL_FILE"
 chmod 0600 "$BASE/metadata.env"
 systemctl daemon-reload
 systemctl enable office-wg.service >&2
-systemctl start office-wg.service
+if ! systemctl start office-wg.service; then
+    log 'Service startup failed. Recent service journal (WireGuard key strings redacted):'
+    # wg may include an offending key in parser errors. Never expose any genuine
+    # 32-byte WireGuard key, or an explicit private/preshared-key assignment.
+    journalctl -u office-wg.service -n 60 --no-pager 2>&1 | \
+        sed -E -e '/[Pp]rivate[Kk]ey[[:space:]]*=/c\[REDACTED_PRIVATE_KEY_ASSIGNMENT]' \
+               -e '/[Pp]reshared[Kk]ey[[:space:]]*=/c\[REDACTED_PRESHARED_KEY_ASSIGNMENT]' \
+               -e 's/[A-Za-z0-9+\/]{43}=/[REDACTED_WIREGUARD_KEY]/g' >&2 || true
+    die 'office-wg.service could not start; rolling back this new installation.'
+fi
 health_check
 export_profiles
 COMMITTED=1

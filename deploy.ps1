@@ -119,7 +119,9 @@ mkdir -p "$taskdir/lib"
         default { '--export-stdout' }
     }
     [void]$payload.Append("bash ./deploy.sh $modeArgs ./server.env`n")
-    return $payload.ToString()
+    # Git checkouts on Windows may use CRLF in the literal here-string above.
+    # Normalize the entire transport, including its shell wrapper, before SSH.
+    return $payload.ToString().Replace("`r`n", "`n")
 }
 
 function ConvertFrom-ProfileLine {
