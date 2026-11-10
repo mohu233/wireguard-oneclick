@@ -510,7 +510,10 @@ case ${1:-} in
             [[ -S /var/run/wireguard/wg-office.sock ]]
         fi
         printf '[office-wg-service] Loading saved WireGuard configuration.\n' >&2
-        "$WG" setconf wg-office "$BASE/server/server.conf"
+        # Distribution AppArmor profiles may limit wg's named-file reads to
+        # /etc/wireguard. Feed an anonymous pipe, as wg-quick does, so the shell
+        # keeps our private /opt state readable without weakening confinement.
+        cat "$BASE/server/server.conf" | "$WG" setconf wg-office /dev/stdin
         printf '[office-wg-service] Configuring tunnel address and forwarding.\n' >&2
         ip -4 address replace "$ADDRESS" dev wg-office
         ip link set dev wg-office mtu "$MTU" up

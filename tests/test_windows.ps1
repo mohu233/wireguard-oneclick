@@ -112,3 +112,6 @@ try {
         [IO.Path]::GetFileName($resolvedTemporaryRoot) -notlike 'wg-deploy-test-*') { throw 'Refusing unsafe temporary cleanup' }
     Remove-Item -LiteralPath $resolvedTemporaryRoot -Recurse -Force
 }
+# The deliberately failed SSH fixture leaves LASTEXITCODE=1. GitHub's shell
+# wrapper propagates it even after all assertions pass, so clear it on success.
+$global:LASTEXITCODE = 0

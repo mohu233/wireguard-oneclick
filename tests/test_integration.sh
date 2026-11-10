@@ -216,7 +216,9 @@ AllowedIPs = 10.66.66.1/32
 Endpoint = 192.0.2.1:$PORT
 PersistentKeepalive = 1
 CLIENT_CONFIG
-ip netns exec "$NS" "$WG_BIN" setconf "$CLIENT_WG" "$TEMP_DIR/client-wireguard.conf"
+# Use an anonymous pipe just like the service: packaged wg can be AppArmor
+# confined and unable to reopen a named configuration under /tmp or /opt.
+cat "$TEMP_DIR/client-wireguard.conf" | ip netns exec "$NS" "$WG_BIN" setconf "$CLIENT_WG" /dev/stdin
 ip -n "$NS" address add 10.66.66.4/32 dev "$CLIENT_WG"
 ip -n "$NS" link set dev "$CLIENT_WG" mtu 1420 up
 ip -n "$NS" route add 10.66.66.1/32 dev "$CLIENT_WG"
